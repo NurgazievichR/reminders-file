@@ -1,11 +1,16 @@
 import json
+import os
+import shutil
 
 from collections import defaultdict
 from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from adastra_client import AdAstraClient
 
-need_date = date.today().strftime("%Y-%m-%d")
+
+need_date = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+# need_data = '2025-10-10'
 SYSTEM_GUID = "4212879f-9dca-4ba8-9141-65c536de9da3"
 
 
@@ -75,7 +80,7 @@ def collect_all_appointments(client):
 
         page += 1
 
-    print(f"✅ Всего собрано {len(all_appointments)} назначений")
+    print(f"✅ Tottally collected {len(all_appointments)} appointments")
     return all_appointments
 
 
@@ -138,26 +143,41 @@ def group_appointments(client, all_appointments):
     return grouped_osi, grouped_vis
 
         
+def cleanup_last_date_dirs(root="data", days=7):
+    # deletes all files that is keeped more than one week
+    try:
+        date_dirs = sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)))
+    except FileNotFoundError:
+        return
+
+    while len(date_dirs) > days:
+        oldest = date_dirs.pop(0) 
+        shutil.rmtree(os.path.join(root, oldest), ignore_errors=True)
+        print(f"🧹 removed {oldest}")
 
 
 
 def main():
+    date_dir = os.path.join("data", need_date)
+    os.makedirs(date_dir, exist_ok=True)
+    cleanup_last_date_dirs()
+
+    print(f"Processing {need_date} reminders")
     adastra_client = AdAstraClient()
     adastra_client.login()
 
     appointments = collect_all_appointments(adastra_client)
-    file_name = f"data/appointments_{need_date.replace('-','_')}.json"
-    with open(file_name, "w", encoding="utf-8") as f:
+    with open(os.path.join(date_dir, "appointments.json"), "w", encoding="utf-8") as f:
         json.dump(appointments, f, indent=4, ensure_ascii=False)
 
     grouped_osi, grouped_vis = group_appointments(adastra_client, appointments)
 
-    file_name_osi = f"data/{need_date.replace('-','_')}_grouped_apps_osi.json"
-    file_name_vis = f"data/{need_date.replace('-','_')}_grouped_apps_vis.json"
-    with open(file_name_osi, "w", encoding="utf-8") as f:
+    with open(os.path.join(date_dir, "grouped_apps_osi.json"), "w", encoding="utf-8") as f:
         json.dump(grouped_osi, f, indent=4, ensure_ascii=False)
-    with open(file_name_vis, "w", encoding="utf-8") as f:
+    with open(os.path.join(date_dir, "grouped_apps_vis.json"), "w", encoding="utf-8") as f:
         json.dump(grouped_vis, f, indent=4, ensure_ascii=False)
+
+    
 
 
 if __name__ == '__main__':
