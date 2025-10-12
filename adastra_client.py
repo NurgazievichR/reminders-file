@@ -42,7 +42,7 @@ def _unwrap_items(data: Any) -> List[Dict[str, Any]]:
     raise APIError("Unexpected response shape; expected list or {'data': [...]}.")
 
 
-class AdAstraMinimalClient:
+class AdAstraClient:
     """
     Минимальный клиент только для:
       - GET /api/Appoinment/interpreters/{assignment_code}
@@ -187,7 +187,7 @@ class AdAstraMinimalClient:
 # if __name__ == "__main__":
 #     client = AdAstraMinimalClient()
 #     token = client.login()
-#     print("✅ Logged in, token:", token[:30], "...")
+#     print("✅ Logged in, token:", token, "...")
 
 #     # Пример запроса:
 #     interpreters = client.get_interpreters_for_assignment("6488")
