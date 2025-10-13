@@ -101,6 +101,7 @@ class AdAstraClient:
         json: Optional[Dict[str, Any]] = None,
         with_auth: bool = True,
         headers: Optional[Dict[str, str]] = None,
+        params: Optional[Dict[str, Any]] = None,
     ) -> Any:
         url = path_or_url if path_or_url.startswith("http") else self._url(path_or_url)
         import time, random
@@ -109,7 +110,7 @@ class AdAstraClient:
         for attempt in range(self._max_retries + 1):
             try:
                 hdrs = headers or self._headers(with_auth=with_auth)
-                resp = self._session.request(method, url, headers=hdrs, json=json, timeout=self.timeout)
+                resp = self._session.request(method, url, headers=hdrs, json=json, params=params, timeout=self.timeout)
 
                 if resp.status_code in (429,) or resp.status_code >= 500:
                     raise APIError("Retryable error", resp.status_code, resp.text)
@@ -132,8 +133,8 @@ class AdAstraClient:
     def _get(self, path: str) -> Any:
         return self._request("GET", path)
 
-    def _post(self, path: str, body: Optional[Dict[str, Any]] = None) -> Any:
-        return self._request("POST", path, json=body or {})
+    def _post(self, path: str, body: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Any:
+        return self._request("POST", path, json=body or {}, params=params)
 
     # ------------------- LOGIN -------------------
 
@@ -171,17 +172,12 @@ class AdAstraClient:
         system_guid: str,
         *,
         filters: Optional[Dict[str, Any]] = None,
-        page: Optional[int] = None,
-        size: Optional[int] = None,
+        params: Optional[Dict[str, Any]] = None, 
     ) -> Dict[str, Any]:
         body: Dict[str, Any] = dict(filters or {})
-        if page is not None:
-            body.setdefault("page", page)
-        if size is not None:
-            body.setdefault("size", size)
 
         path = f"/api/Appoinment/filter/SYSTEM/{system_guid}"
-        data = self._post(path, body=body)
+        data = self._post(path, body=body, params=params)
         return data if isinstance(data, dict) else {"data": _unwrap_items(data)}
 
 # if __name__ == "__main__":

@@ -7,10 +7,11 @@ from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from adastra_client import AdAstraClient
+from textus_cleint import TextUsClient
 
 
 need_date = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
-# need_data = '2025-10-10'
+# need_date = '2025-10-13'
 SYSTEM_GUID = "4212879f-9dca-4ba8-9141-65c536de9da3"
 
 
@@ -53,6 +54,12 @@ def collect_all_appointments(client):
     size = 100
 
     while True:
+        params = {
+            "page": page,
+            "items_per_page": size,
+            # "search": "jhm"
+        }
+
         filters = {
             "accounts": [],
             "communicationTypes": [],
@@ -65,11 +72,10 @@ def collect_all_appointments(client):
         resp = client.filter_appointments_system(
             SYSTEM_GUID,
             filters=filters,
-            page=page,
-            size=size
+            params=params
         )
 
-        items = resp.get("data", [])
+        items = resp.get("data", [])    
         if not items:
             break
 
@@ -77,7 +83,6 @@ def collect_all_appointments(client):
 
         if len(items) < size:
             break
-
         page += 1
 
     print(f"✅ Tottally collected {len(all_appointments)} appointments")
@@ -158,11 +163,11 @@ def cleanup_last_date_dirs(root="data", days=7):
 
 
 def main():
+    cleanup_last_date_dirs()
     date_dir = os.path.join("data", need_date)
     os.makedirs(date_dir, exist_ok=True)
-    cleanup_last_date_dirs()
 
-    print(f"Processing {need_date} reminders")
+    print(f"Processing {need_date} reminders...")
     adastra_client = AdAstraClient()
     adastra_client.login()
 
@@ -177,7 +182,19 @@ def main():
     with open(os.path.join(date_dir, "grouped_apps_vis.json"), "w", encoding="utf-8") as f:
         json.dump(grouped_vis, f, indent=4, ensure_ascii=False)
 
+    print(f"sending OSI reminders...")
+    textus_client = TextUsClient()
     
+    for interpreter, assignments in grouped_osi.items():
+        times = [a["start_time"] for a in assignments if a.get("start_time")]
+        phone = assignments[0].get("phone")
+        if not phone or not times:
+            print(f'error sending, phone {phone}, time {times}')
+            continue
+        textus_client.send_reminder(phone, times)
+
+    print(f"sending VIS reminders...")
+    ...
 
 
 if __name__ == '__main__':
