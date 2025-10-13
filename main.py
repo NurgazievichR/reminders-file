@@ -194,7 +194,7 @@ def main():
         textus_client.send_reminder(phone, times)
 
     print(f"sending VIS reminders...")
-    ...
+    
 
 
 if __name__ == '__main__':
