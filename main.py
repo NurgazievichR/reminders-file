@@ -3,14 +3,15 @@ import os
 import shutil
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from adastra_client import AdAstraClient
 from textus_cleint import TextUsClient
 
+import time
 
-need_date = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+need_date = (datetime.now(ZoneInfo("America/New_York")) + timedelta(days=1)).date().isoformat()
 # need_date = '2025-10-13'
 SYSTEM_GUID = "4212879f-9dca-4ba8-9141-65c536de9da3"
 
@@ -191,10 +192,18 @@ def main():
         if not phone or not times:
             print(f'error sending, phone {phone}, time {times}')
             continue
-        textus_client.send_reminder(phone, times)
+        conversation_id = textus_client.send_reminder(phone, times)
+        print(f"Sent to {phone}, times: {"".join(times)}")
+        if conversation_id:
+            textus_client.close_conversation(conversation_id)
 
-    print(f"sending VIS reminders...")
+    print(f"sending VIS reminders...")  
     
+    # for interpreter, assignments in grouped_vis.items():
+        
+    #     for assignment in assignments:
+
+
 
 
 if __name__ == '__main__':
