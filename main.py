@@ -3,7 +3,7 @@ import os
 import shutil
 
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 
 from adastra_client import AdAstraClient
@@ -148,56 +148,71 @@ def group_appointments(client, all_appointments):
     
     return grouped_osi, grouped_vis
 
-        
-def cleanup_last_date_dirs(root="data", days=7):
-    # deletes all files that is keeped more than one week
+#FULL READY
+def prepare_date_dir(root: str = "data", days: int = 7):
+    #We create data folder where we will keep info about reminders, for debugging if there are some wrong cases for example
+    date_dir = os.path.join("data", need_date)
+    os.makedirs(date_dir, exist_ok=True) 
+
+    #from here we clean every date besides [TODAY - {days}, TODAY] 
+    today = date.today()
+
+    keep = {
+        (today - timedelta(days=i)).strftime("%Y-%m-%d")
+        for i in range(days + 1)
+    }
+
     try:
-        date_dirs = sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)))
+        dirs = os.listdir(root)
     except FileNotFoundError:
+        print(f"file {root} was not found")
         return
 
-    while len(date_dirs) > days:
-        oldest = date_dirs.pop(0) 
-        shutil.rmtree(os.path.join(root, oldest), ignore_errors=True)
-        print(f"🧹 removed {oldest}")
+    for d in dirs:
+        full = os.path.join(root, d)
 
+        if not os.path.isdir(full):
+            continue
+
+        if d not in keep:
+            shutil.rmtree(full, ignore_errors=True)
+            print(f"🧹 removed {d}")
 
 
 def main():
-    cleanup_last_date_dirs()
-    date_dir = os.path.join("data", need_date)
-    os.makedirs(date_dir, exist_ok=True)
+    prepare_date_dir()
+  
 
-    print(f"Processing {need_date} reminders...")
-    adastra_client = AdAstraClient()
-    adastra_client.login()
+    # print(f"Processing {need_date} reminders...")
+    # adastra_client = AdAstraClient()
+    # adastra_client.login()
 
-    appointments = collect_all_appointments(adastra_client)
-    with open(os.path.join(date_dir, "appointments.json"), "w", encoding="utf-8") as f:
-        json.dump(appointments, f, indent=4, ensure_ascii=False)
+    # appointments = collect_all_appointments(adastra_client)
+    # with open(os.path.join(date_dir, "appointments.json"), "w", encoding="utf-8") as f:
+    #     json.dump(appointments, f, indent=4, ensure_ascii=False)
 
-    grouped_osi, grouped_vis = group_appointments(adastra_client, appointments)
+    # grouped_osi, grouped_vis = group_appointments(adastra_client, appointments)
 
-    with open(os.path.join(date_dir, "grouped_apps_osi.json"), "w", encoding="utf-8") as f:
-        json.dump(grouped_osi, f, indent=4, ensure_ascii=False)
-    with open(os.path.join(date_dir, "grouped_apps_vis.json"), "w", encoding="utf-8") as f:
-        json.dump(grouped_vis, f, indent=4, ensure_ascii=False)
+    # with open(os.path.join(date_dir, "grouped_apps_osi.json"), "w", encoding="utf-8") as f:
+    #     json.dump(grouped_osi, f, indent=4, ensure_ascii=False)
+    # with open(os.path.join(date_dir, "grouped_apps_vis.json"), "w", encoding="utf-8") as f:
+    #     json.dump(grouped_vis, f, indent=4, ensure_ascii=False)
 
-    print(f"sending OSI reminders...")
-    textus_client = TextUsClient()
+    # print(f"sending OSI reminders...")
+    # textus_client = TextUsClient()
     
-    for interpreter, assignments in grouped_osi.items():
-        times = [a["start_time"] for a in assignments if a.get("start_time")]
-        phone = assignments[0].get("phone")
-        if not phone or not times:
-            print(f'error sending, phone {phone}, time {times}')
-            continue
-        conversation_id = textus_client.send_reminder(phone, times)
-        print(f"Sent to {phone}, times: {"".join(times)}")
-        if conversation_id:
-            textus_client.close_conversation(conversation_id)
+    # for interpreter, assignments in grouped_osi.items():
+    #     times = [a["start_time"] for a in assignments if a.get("start_time")]
+    #     phone = assignments[0].get("phone")
+    #     if not phone or not times:
+    #         print(f'error sending, phone {phone}, time {times}')
+    #         continue
+    #     conversation_id = textus_client.send_reminder(phone, times)
+    #     print(f"Sent to {phone}, times: {"".join(times)}")
+    #     if conversation_id:
+    #         textus_client.close_conversation(conversation_id)
 
-    print(f"sending VIS reminders...")  
+    # print(f"sending VIS reminders...")  
     
     # for interpreter, assignments in grouped_vis.items():
         
