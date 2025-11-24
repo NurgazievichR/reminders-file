@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from adastra_client import AdAstraClient
 from textus_cleint import TextUsClient
+from graph_client import GraphClient
 
 import time
 
@@ -15,6 +16,31 @@ need_date = (datetime.now(ZoneInfo("America/New_York")) + timedelta(days=1)).dat
 # need_date = '2025-10-13'
 SYSTEM_GUID = "4212879f-9dca-4ba8-9141-65c536de9da3"
 
+#FULL READY
+def prepare_date_dir(root: str = "data", days: int = 7):
+    #from here we clean every date besides [TODAY - {days}, TODAY] 
+    today = date.today()
+
+    keep = {
+        (today - timedelta(days=i)).strftime("%Y-%m-%d")
+        for i in range(-1, days + 1)
+    }
+
+    try:
+        dirs = os.listdir(root)
+    except FileNotFoundError:
+        print(f"file {root} was not found")
+        return
+
+    for d in dirs:
+        full = os.path.join(root, d)
+
+        if not os.path.isdir(full):
+            continue
+
+        if d not in keep:
+            shutil.rmtree(full, ignore_errors=True)
+            print(f"🧹 removed {d}")
 
 def get_interpreter_details(client, interpreter_id):
     try:
@@ -31,25 +57,8 @@ def get_interpreter_details(client, interpreter_id):
     return email, phone, name
 
 
-def get_assigned_interpreter_for_assignment(client, assignment_id):
-    try:
-        data = client.get_interpreters_for_assignment(assignment_id) 
-    except Exception as e:
-        print(f"failed to load interpreters for {assignment_id}: {e}")
-        return None
-
-    if not isinstance(data, list):
-        return None
-
-    for row in data:
-        status = row.get("assignStatusName")
-        if status == "Assign":
-            return row.get("fK_Interpreter")
-
-    return None
-
-
 def collect_all_appointments(client):
+
     all_appointments = []
     page = 1
     size = 100
@@ -68,6 +77,7 @@ def collect_all_appointments(client):
             "serviceTypes": [],
             "startDate": need_date,
             "endDate": need_date,
+            "status" : [2] #Confirmed ones
         }
 
         resp = client.filter_appointments_system(
@@ -90,25 +100,24 @@ def collect_all_appointments(client):
     return all_appointments
 
 
-def group_appointments(client, all_appointments):
+def group_appointments(client: AdAstraClient, all_appointments):
     grouped_osi = defaultdict(list)
     grouped_vis = defaultdict(list)
 
     for appointment in all_appointments:
         code = appointment.get("code")
         print(f"processing {code}",end=' ')
-        status = appointment.get("statusName")
         language_to = appointment.get("languageTo")
 
-        if status != "Confirmed" or language_to == "American Sign Language":
-            print(status if status != "Confirmed" else language_to)
+        if language_to == "American Sign Language":
+            print('ASL')
             continue
         
         start_time = appointment.get("startTime")
         communication_type = appointment.get("fK_CommunicationType")
         is_virtual = communication_type != 'oc'
         
-        assigned_interpreter_id = get_assigned_interpreter_for_assignment(client, code)
+        assigned_interpreter_id = appointment.get("fK_Interpreter")
         if not assigned_interpreter_id:
             print("No assigned interpreter")
             continue
@@ -136,10 +145,12 @@ def group_appointments(client, all_appointments):
         }
 
         if is_virtual:
+            appointment_detailed = client.get_appointment(code)
             virtual_data = {
-                "virtualAddress": appointment.get("virtualAddress") or "NO LINK",
-                "callerNumber": appointment.get("callerNumber") or "NO NUMBER",
-                "pin": appointment.get("pin") or "NO PIN"
+                "virtualAddress": appointment_detailed.get("virtualAddress") or "n/a",
+                "meetingPinCode": appointment_detailed.get("meetingPinCode") or "n/a",
+                "pin": appointment_detailed.get("pin") or "n/a",
+                "noteInterpreter": appointment_detailed.get("noteInterpreter") or "n/a",
                 }
             appointment_data.update(virtual_data)
 
@@ -148,42 +159,15 @@ def group_appointments(client, all_appointments):
     
     return grouped_osi, grouped_vis
 
-#FULL READY
-def prepare_date_dir(root: str = "data", days: int = 7):
-    #We create data folder where we will keep info about reminders, for debugging if there are some wrong cases for example
-    date_dir = os.path.join("data", need_date)
-    os.makedirs(date_dir, exist_ok=True) 
-
-    #from here we clean every date besides [TODAY - {days}, TODAY] 
-    today = date.today()
-
-    keep = {
-        (today - timedelta(days=i)).strftime("%Y-%m-%d")
-        for i in range(days + 1)
-    }
-
-    try:
-        dirs = os.listdir(root)
-    except FileNotFoundError:
-        print(f"file {root} was not found")
-        return
-
-    for d in dirs:
-        full = os.path.join(root, d)
-
-        if not os.path.isdir(full):
-            continue
-
-        if d not in keep:
-            shutil.rmtree(full, ignore_errors=True)
-            print(f"🧹 removed {d}")
-
 
 def main():
-    prepare_date_dir()
-  
-
     # print(f"Processing {need_date} reminders...")
+
+    # #We create data folder where we will keep info about reminders, for debugging if there are some wrong cases for example
+    # date_dir = os.path.join("data", need_date)
+    # os.makedirs(date_dir, exist_ok=True) 
+    # prepare_date_dir()
+
     # adastra_client = AdAstraClient()
     # adastra_client.login()
 
@@ -192,7 +176,6 @@ def main():
     #     json.dump(appointments, f, indent=4, ensure_ascii=False)
 
     # grouped_osi, grouped_vis = group_appointments(adastra_client, appointments)
-
     # with open(os.path.join(date_dir, "grouped_apps_osi.json"), "w", encoding="utf-8") as f:
     #     json.dump(grouped_osi, f, indent=4, ensure_ascii=False)
     # with open(os.path.join(date_dir, "grouped_apps_vis.json"), "w", encoding="utf-8") as f:
@@ -207,10 +190,10 @@ def main():
     #     if not phone or not times:
     #         print(f'error sending, phone {phone}, time {times}')
     #         continue
-    #     conversation_id = textus_client.send_reminder(phone, times)
+    #     # conversation_id = textus_client.send_reminder(phone, times)
     #     print(f"Sent to {phone}, times: {"".join(times)}")
-    #     if conversation_id:
-    #         textus_client.close_conversation(conversation_id)
+    #     # if conversation_id:
+    #     #     textus_client.close_conversation(conversation_id)
 
     # print(f"sending VIS reminders...")  
     
@@ -218,7 +201,15 @@ def main():
         
     #     for assignment in assignments:
 
+    client = GraphClient()
 
+    to = "interpreting@ad-astrainc.com"
+    subject = "check"
+    body = "check"
+
+    print("Sending message...")
+    client.send_message(to, subject, body)
+    print("Message sent!")
 
 
 if __name__ == '__main__':

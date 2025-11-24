@@ -166,6 +166,11 @@ class AdAstraClient:
         path = f"/api/accounts/GetAccountDetailByID/{interpreter_id}"
         data = self._get(path)
         return data if isinstance(data, dict) else {"data": data}
+    
+    def get_appointment(self, code: Union[str, int]) -> Dict[str, Any]:
+        path = f"/api/Appoinment/{code}"
+        data = self._get(path)
+        return data if isinstance(data, dict) else {"data": data}
 
     def filter_appointments_system(
         self,
