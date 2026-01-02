@@ -196,6 +196,13 @@ def build_vis_body(assignments: list[dict]) -> str:
         lines.append(f"\nNotes: {noteInterpreter}\n")
 
     lines.append(
+        "\nJust a friendly reminder to send us a screenshot when you connect to your virtual meeting. "
+        "Please make sure to email it to interpreting@ad-astrainc.com. "
+        "It is important that we receive this in the event a client reports that you are not connected, "
+        "as it allows us to resolve any technical issues in a timely manner.\n"
+    )
+
+    lines.append(
         "\nLet us know if you experience any problems right away.\n\n"
         "Thank you,\n"
         "Ramazan"
