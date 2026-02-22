@@ -1,5 +1,4 @@
 import time
-import random
 import httpx
 from decouple import config
 
@@ -9,11 +8,7 @@ class GraphClient:
         self.tenant_id = config("AZ_TENANT_ID")
         self.client_id = config("AZ_CLIENT_ID")
         self.client_secret = config("AZ_CLIENT_SECRET")
-        self.mailbox = config("MAILBOX", default=None)
-
-        # retry настройки
-        self.max_retries = config("GRAPH_MAX_RETRIES", cast=int, default=3)
-        self.backoff_base = config("GRAPH_BACKOFF_BASE", cast=float, default=0.5)
+        self.mailbox = config("MAILBOX")
 
         # token cache
         self._token = None
@@ -21,45 +16,33 @@ class GraphClient:
 
     # ------------------ helpers ------------------
 
-    @staticmethod
-    def _should_retry(code: int) -> bool:
-        return code == 429 or 500 <= code < 600
-
-    def _request(self, method: str, url: str, *, headers=None, data=None, json=None, timeout=30):
-        last_exc = None
-
-        for attempt in range(self.max_retries + 1):
-            try:
-                r = httpx.request(method, url, headers=headers, data=data, json=json, timeout=timeout)
-
-                if self._should_retry(r.status_code):
-                    raise httpx.HTTPStatusError("retryable", request=r.request, response=r)
-
-                r.raise_for_status()
-                return r
-
-            except (httpx.HTTPStatusError, httpx.RequestError) as exc:
-                last_exc = exc
-
-                if isinstance(exc, httpx.HTTPStatusError) and not self._should_retry(exc.response.status_code):
-                    break
-
-                if attempt >= self.max_retries:
-                    break
-
-                sleep_s = self.backoff_base * (2 ** attempt) + random.uniform(0, 0.25)
-                time.sleep(sleep_s)
-
-        raise last_exc if last_exc else RuntimeError("Unknown HTTP error")
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers=None,
+        data=None,
+        json=None,
+        timeout=30,
+    ):
+        r = httpx.request(
+            method,
+            url,
+            headers=headers,
+            data=data,
+            json=json,
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        return r
 
     # ------------------ login ------------------
 
     def get_token(self) -> str:
-        import time
-
         now = time.time()
 
-        # токен ещё жив
+        # токен ещё жив (с запасом 60 сек)
         if self._token and (self._exp_ts - now > 60):
             return self._token
 
@@ -80,6 +63,8 @@ class GraphClient:
 
         return self._token
 
+    # ------------------ SEND MAIL ------------------
+
     def send_message(self, who: str, subject: str, body_text: str):
         url = f"https://graph.microsoft.com/v1.0/users/{self.mailbox}/sendMail"
 
@@ -94,7 +79,7 @@ class GraphClient:
                     {"emailAddress": {"address": who}}
                 ],
             },
-            "saveToSentItems": True
+            "saveToSentItems": True,
         }
 
         headers = {
@@ -103,7 +88,6 @@ class GraphClient:
         }
 
         self._request("POST", url, headers=headers, json=payload)
-
 
     # ------------------ TAG MESSAGE ------------------
 

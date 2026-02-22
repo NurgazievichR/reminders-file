@@ -148,7 +148,7 @@ def group_appointments(client: AdAstraClient, all_appointments):
             appointment_detailed = client.get_appointment(code)
             virtual_data = {
                 "virtualAddress": appointment_detailed.get("virtualAddress") or "n/a",
-                "meetingPinCode": appointment_detailed.get("meetingPinCode") or "n/a",
+                "meetingPinCode": appointment_detailed.get("callerNumber") or "n/a",
                 "pin": appointment_detailed.get("pin") or "n/a",
                 "noteInterpreter": appointment_detailed.get("noteInterpreter") or "n/a",
                 }
@@ -202,6 +202,8 @@ def build_vis_body(assignments: list[dict]) -> str:
         "as it allows us to resolve any technical issues in a timely manner.\n"
     )
 
+    lines.append("One more reminder to submit your VOS form immediately after completing the assignment. Payment processing begins once we receive your VOS—submitting it promptly helps ensure timely payment.")
+
     lines.append(
         "\nLet us know if you experience any problems right away.\n\n"
         "Thank you,\n"
@@ -233,7 +235,7 @@ def main():
 
     print(f"sending OSI reminders...")
     textus_client = TextUsClient()
-    
+
     for interpreter, assignments in grouped_osi.items():
         times = [a["start_time"] for a in assignments if a.get("start_time")]
         phone = assignments[0].get("phone").strip()

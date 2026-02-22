@@ -69,6 +69,7 @@ class TextUsClient:
             f"Good evening,\n\n"
             f"This is a reminder of your assignment(s) for tomorrow at {time_fmt}.\n"
             f"To acknowledge receipt, please reply with 1 or please reply with 2 if you need one of our project managers to place a call to you."
+            f"\nFriendly reminder to submit your VOS form immediately after completing the assignment. Payment processing begins once we receive your VOS—submitting it promptly helps ensure timely payment."
         )
 
         url = f"{self.host}/{self.account_slug}/messages"
