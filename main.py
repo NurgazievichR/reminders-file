@@ -115,7 +115,8 @@ def group_appointments(client: AdAstraClient, all_appointments):
         
         start_time = appointment.get("startTime")
         communication_type = appointment.get("fK_CommunicationType")
-        is_virtual = communication_type != 'oc'
+        comm_norm = (communication_type or "").strip().lower()
+        is_virtual = comm_norm not in ("oc", "os")
         
         assigned_interpreter_id = appointment.get("fK_Interpreter")
         if not assigned_interpreter_id:
