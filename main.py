@@ -15,9 +15,10 @@ import time
 need_date = (datetime.now(ZoneInfo("America/New_York")) + timedelta(days=1)).date().isoformat()
 # need_date = '2025-10-13'
 SYSTEM_GUID = "4212879f-9dca-4ba8-9141-65c536de9da3"
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 #FULL READY
-def prepare_date_dir(root: str = "data", days: int = 7):
+def prepare_date_dir(root: str = DATA_DIR, days: int = 7):
     #from here we clean every date besides [TODAY - {days}, TODAY] 
     today = date.today()
 
@@ -217,7 +218,7 @@ def main():
     print(f"Processing {need_date} reminders...")
 
     #We create data folder where we will keep info about reminders, for debugging if there are some wrong cases for example
-    date_dir = os.path.join("data", need_date)
+    date_dir = os.path.join(DATA_DIR, need_date)
     os.makedirs(date_dir, exist_ok=True) 
     prepare_date_dir()
 

@@ -15,7 +15,8 @@ from graph_client import GraphClient
 NY = ZoneInfo("America/New_York")
 REMINDER_1H_MIN_MINUTES = 52
 REMINDER_1H_MAX_MINUTES = 67
-SENT_1H_PATH = os.path.join("data", "sent_1h.json")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+SENT_1H_PATH = os.path.join(DATA_DIR, "sent_1h.json")
 OAH_KEYWORD = config("OAH_KEYWORD", default="OAH")
 
 
@@ -154,7 +155,7 @@ def main_1h():
     need_date = datetime.now(NY).date().isoformat()
     print(f"Processing {need_date} 1h OAH reminders ({REMINDER_1H_MIN_MINUTES}-{REMINDER_1H_MAX_MINUTES} min window)...")
 
-    date_dir = os.path.join("data", need_date)
+    date_dir = os.path.join(DATA_DIR, need_date)
     os.makedirs(date_dir, exist_ok=True)
     main.prepare_date_dir()
 
