@@ -3,7 +3,8 @@ import re
 
 from typing import Optional
 from decouple import config
-from datetime import datetime
+
+from timezones import format_time_with_tz
 
 class TextUsClient:
     def __init__(self, host: str | None = None, token: str | None = None, account_slug: str | None = None):
@@ -40,15 +41,15 @@ class TextUsClient:
         return None
 
     @staticmethod
-    def _format_times(times: list[str]) -> str:
+    def _format_times(times: list[str], time_zone_names: list[str | None] | None = None) -> str:
         if not times:
             return ""
 
         formatted = []
-        for t in times:
+        for i, t in enumerate(times):
+            tz = time_zone_names[i] if time_zone_names and i < len(time_zone_names) else None
             try:
-                dt = datetime.fromisoformat(t)
-                formatted.append(dt.strftime("%-I:%M %p"))
+                formatted.append(format_time_with_tz(t, tz))
             except Exception:
                 formatted.append(str(t))
 
@@ -58,19 +59,34 @@ class TextUsClient:
             return f"{formatted[0]} and {formatted[1]}"
         return f"{', '.join(formatted[:-1])} and {formatted[-1]}"
 
-    def send_reminder(self, phone_number: str, times: list[str]) -> str | None:
+    def send_reminder(
+        self,
+        phone_number: str,
+        times: list[str],
+        *,
+        time_zone_names: list[str | None] | None = None,
+        same_day: bool = False,
+    ) -> str | None:
         to = self.to_e164_us(phone_number)
         if not to:
             print(f"❌ Invalid number format: {phone_number}")
             return None
 
-        time_fmt = self._format_times(times)
-        body = (
-            f"Good evening,\n\n"
-            f"This is a reminder of your assignment(s) for tomorrow at {time_fmt}.\n"
-            f"To acknowledge receipt, please reply with 1 or please reply with 2 if you need one of our project managers to place a call to you."
-            f"\nFriendly reminder to submit your VOS form immediately after completing the assignment. Payment processing begins once we receive your VOS—submitting it promptly helps ensure timely payment."
-        )
+        time_fmt = self._format_times(times, time_zone_names)
+        if same_day:
+            body = (
+                f"Hello,\n\n"
+                f"This is a reminder that your assignment(s) start in about one hour at {time_fmt}.\n"
+                f"To acknowledge receipt, please reply with 1 or please reply with 2 if you need one of our project managers to place a call to you."
+                f"\nFriendly reminder to submit your VOS form immediately after completing the assignment. Payment processing begins once we receive your VOS—submitting it promptly helps ensure timely payment."
+            )
+        else:
+            body = (
+                f"Good evening,\n\n"
+                f"This is a reminder of your assignment(s) for tomorrow at {time_fmt}.\n"
+                f"To acknowledge receipt, please reply with 1 or please reply with 2 if you need one of our project managers to place a call to you."
+                f"\nFriendly reminder to submit your VOS form immediately after completing the assignment. Payment processing begins once we receive your VOS—submitting it promptly helps ensure timely payment."
+            )
 
         url = f"{self.host}/{self.account_slug}/messages"
         payload = {"to": to, "body": body}

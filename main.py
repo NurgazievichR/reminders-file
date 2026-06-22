@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from adastra_client import AdAstraClient
 from textus_cleint import TextUsClient
 from graph_client import GraphClient
+from timezones import format_time_with_tz
 
 import time
 
@@ -146,8 +147,10 @@ def group_appointments(client: AdAstraClient, all_appointments):
             # "location": appointment.get("address"),
         }
 
+        appointment_detailed = client.get_appointment(code)
+        appointment_data["time_zone_name"] = appointment_detailed.get("timeZoneName")
+
         if is_virtual:
-            appointment_detailed = client.get_appointment(code)
             virtual_data = {
                 "virtualAddress": appointment_detailed.get("virtualAddress") or "n/a",
                 "meetingPinCode": appointment_detailed.get("callerNumber") or "n/a",
@@ -164,10 +167,9 @@ def group_appointments(client: AdAstraClient, all_appointments):
 from datetime import datetime
 
 
-def _format_time(iso_str: str) -> str:
-    """'2025-11-25T14:00:00' -> '02:00 pm'."""
-    dt = datetime.fromisoformat(iso_str)
-    return dt.strftime("%I:%M %p").lower().lstrip("0")  # 01:15 PM -> 1:15 pm
+def _format_time(iso_str: str, time_zone_name: str | None = None) -> str:
+    """'2025-11-25T14:00:00' -> '2:00 pm EST'."""
+    return format_time_with_tz(iso_str, time_zone_name)
 
 
 def build_vis_body(assignments: list[dict]) -> str:
@@ -183,7 +185,7 @@ def build_vis_body(assignments: list[dict]) -> str:
     assignments_sorted = sorted(assignments, key=lambda a: a["start_time"])
 
     for idx, a in enumerate(assignments_sorted, start=1):
-        time_str = _format_time(a["start_time"])
+        time_str = _format_time(a["start_time"], a.get("time_zone_name"))
         code = a.get("code")
         link = a.get("virtualAddress")
         meetingPinCode = a.get("meetingPinCode")
@@ -240,11 +242,12 @@ def main():
 
     for interpreter, assignments in grouped_osi.items():
         times = [a["start_time"] for a in assignments if a.get("start_time")]
+        tz_names = [a.get("time_zone_name") for a in assignments if a.get("start_time")]
         phone = assignments[0].get("phone").strip()
         if not phone or not times:
             print(f'error sending, phone {phone}, time {times}')
             continue
-        conversation_id = textus_client.send_reminder(phone, times)
+        conversation_id = textus_client.send_reminder(phone, times, time_zone_names=tz_names)
         print(f"Sent to {phone}, times: {"".join(times)}")
         if conversation_id:
             textus_client.close_conversation(conversation_id)

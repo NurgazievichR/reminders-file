@@ -1,8 +1,7 @@
 import json
 import os
 
-import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from decouple import config
@@ -56,10 +55,15 @@ def load_sent_1h() -> dict[str, str]:
     return data if isinstance(data, dict) else {}
 
 
+def prune_sent_1h(sent: dict[str, str], keep_days: int = 7) -> dict[str, str]:
+    cutoff = (datetime.now(NY).date() - timedelta(days=keep_days)).isoformat()
+    return {code: d for code, d in sent.items() if d >= cutoff}
+
+
 def save_sent_1h(sent: dict[str, str]) -> None:
     os.makedirs(os.path.dirname(SENT_1H_PATH), exist_ok=True)
     with open(SENT_1H_PATH, "w", encoding="utf-8") as f:
-        json.dump(sent, f, indent=2, ensure_ascii=False)
+        json.dump(prune_sent_1h(sent), f, indent=2, ensure_ascii=False)
 
 
 def build_vis_body_1h(assignments: list[dict]) -> str:
@@ -71,7 +75,7 @@ def build_vis_body_1h(assignments: list[dict]) -> str:
     ]
 
     for idx, a in enumerate(sorted(assignments, key=lambda x: x["start_time"]), start=1):
-        time_str = main._format_time(a["start_time"])
+        time_str = main._format_time(a["start_time"], a.get("time_zone_name"))
         lines.append(f"\n{idx}) Assignment {a.get('code')}:")
         lines.append(f"\nTime: {time_str}")
         lines.append(f"\nLink: {a.get('virtualAddress')}")
@@ -121,34 +125,15 @@ def filter_appointments(appointments: list[dict], need_date: str, sent_1h: dict[
     return filtered
 
 
-def send_same_day_sms(textus_client: TextUsClient, phone: str, times: list[str]) -> str | None:
-    time_fmt = textus_client._format_times(times)
-    body = (
-        f"Hello,\n\n"
-        f"This is a reminder that your assignment(s) start in about one hour at {time_fmt}.\n"
-        f"To acknowledge receipt, please reply with 1 or please reply with 2 if you need one of our project managers to place a call to you."
-        f"\nFriendly reminder to submit your VOS form immediately after completing the assignment. Payment processing begins once we receive your VOS—submitting it promptly helps ensure timely payment."
+def send_same_day_sms(
+    textus_client: TextUsClient,
+    phone: str,
+    times: list[str],
+    time_zone_names: list[str | None] | None = None,
+) -> str | None:
+    return textus_client.send_reminder(
+        phone, times, time_zone_names=time_zone_names, same_day=True
     )
-
-    to = textus_client.to_e164_us(phone)
-    if not to:
-        print(f"❌ Invalid number format: {phone}")
-        return None
-
-    url = f"{textus_client.host}/{textus_client.account_slug}/messages"
-    resp = requests.post(
-        url,
-        json={"to": to, "body": body},
-        headers=textus_client.headers,
-        timeout=30,
-    )
-    if resp.status_code == 201:
-        conversation_path = resp.json().get("conversation")
-        if conversation_path:
-            return conversation_path.rsplit("/", 1)[-1]
-    else:
-        print(f"❌ send_reminder failed [{resp.status_code}]: {resp.text[:300]}")
-    return None
 
 
 def main_1h():
@@ -178,12 +163,13 @@ def main_1h():
     print("sending OSI 1h reminders...")
     for interpreter, assignments in grouped_osi.items():
         times = [a["start_time"] for a in assignments if a.get("start_time")]
+        tz_names = [a.get("time_zone_name") for a in assignments if a.get("start_time")]
         phone = (assignments[0].get("phone") or "").strip()
         if not phone or not times:
             print(f"error sending, phone {phone}, time {times}")
             continue
 
-        conversation_id = send_same_day_sms(textus_client, phone, times)
+        conversation_id = send_same_day_sms(textus_client, phone, times, tz_names)
         print(f"Sent to {phone}, times: {', '.join(times)}")
         if conversation_id:
             textus_client.close_conversation(conversation_id)
