@@ -4,8 +4,6 @@ import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from decouple import config
-
 import main
 from adastra_client import AdAstraClient
 from textus_cleint import TextUsClient
@@ -16,7 +14,6 @@ REMINDER_1H_MIN_MINUTES = 52
 REMINDER_1H_MAX_MINUTES = 67
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 SENT_1H_PATH = os.path.join(DATA_DIR, "sent_1h.json")
-OAH_KEYWORD = config("OAH_KEYWORD", default="OAH")
 
 
 def parse_start_time(iso_str: str) -> datetime:
@@ -34,17 +31,6 @@ def minutes_until_start(start_time: str, now: datetime | None = None) -> float:
 def is_in_1h_window(start_time: str, now: datetime | None = None) -> bool:
     minutes = minutes_until_start(start_time, now)
     return REMINDER_1H_MIN_MINUTES <= minutes <= REMINDER_1H_MAX_MINUTES
-
-
-def is_oah_appointment(appointment: dict) -> bool:
-    keyword = OAH_KEYWORD.strip().lower()
-    if not keyword:
-        return True
-
-    for value in appointment.values():
-        if isinstance(value, str) and keyword in value.lower():
-            return True
-    return False
 
 
 def load_sent_1h() -> dict[str, str]:
@@ -102,10 +88,6 @@ def filter_appointments(appointments: list[dict], need_date: str, sent_1h: dict[
         start_time = appointment.get("startTime")
         code_str = str(code)
 
-        if not is_oah_appointment(appointment):
-            print(f"skip {code} not OAH")
-            continue
-
         if not start_time:
             print(f"skip {code} no start time")
             continue
@@ -138,7 +120,7 @@ def send_same_day_sms(
 
 def main_1h():
     need_date = datetime.now(NY).date().isoformat()
-    print(f"Processing {need_date} 1h OAH reminders ({REMINDER_1H_MIN_MINUTES}-{REMINDER_1H_MAX_MINUTES} min window)...")
+    print(f"Processing {need_date} 1h reminders ({REMINDER_1H_MIN_MINUTES}-{REMINDER_1H_MAX_MINUTES} min window)...")
 
     date_dir = os.path.join(DATA_DIR, need_date)
     os.makedirs(date_dir, exist_ok=True)
