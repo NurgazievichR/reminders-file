@@ -18,6 +18,14 @@ need_date = (datetime.now(ZoneInfo("America/New_York")) + timedelta(days=1)).dat
 SYSTEM_GUID = "4212879f-9dca-4ba8-9141-65c536de9da3"
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
+#Onsite Consecutive / Onsite Simultaneous -> SMS
+ONSITE_COMM_TYPES = ("oc", "os")
+#Scheduled Telephonic (OPI) -> email, but with its own template
+OPI_COMM_TYPES = ("st",)
+#everything else (tpp, svi, ...) is treated as video -> email with link/PIN
+
+OPI_INSTRUCTION_LINK = "https://connectsupport.helpwise.help/articles/247501-how-to-join-a-prescheduled-opi-call2-how-to-see-and-download-call-logs"
+
 #FULL READY
 def prepare_date_dir(root: str = DATA_DIR, days: int = 7):
     #from here we clean every date besides [TODAY - {days}, TODAY] 
@@ -105,6 +113,7 @@ def collect_all_appointments(client):
 def group_appointments(client: AdAstraClient, all_appointments):
     grouped_osi = defaultdict(list)
     grouped_vis = defaultdict(list)
+    grouped_opi = defaultdict(list)
 
     for appointment in all_appointments:
         code = appointment.get("code")
@@ -118,14 +127,21 @@ def group_appointments(client: AdAstraClient, all_appointments):
         start_time = appointment.get("startTime")
         communication_type = appointment.get("fK_CommunicationType")
         comm_norm = (communication_type or "").strip().lower()
-        is_virtual = comm_norm not in ("oc", "os")
-        
+
+        if comm_norm in ONSITE_COMM_TYPES:
+            grouped_dict = grouped_osi
+        elif comm_norm in OPI_COMM_TYPES:
+            grouped_dict = grouped_opi
+        else:
+            grouped_dict = grouped_vis
+
+        is_virtual = grouped_dict is grouped_vis
+
         assigned_interpreter_id = appointment.get("fK_Interpreter")
         if not assigned_interpreter_id:
             print("No assigned interpreter")
             continue
 
-        grouped_dict = grouped_vis if is_virtual else grouped_osi
         interpreter_email, interpreter_phone, interpreter_full_name = get_interpreter_details(client, assigned_interpreter_id)
 
         if not interpreter_email:
@@ -161,8 +177,8 @@ def group_appointments(client: AdAstraClient, all_appointments):
 
         grouped_dict[interpreter_email].append(appointment_data)
         print(f"success {interpreter_email}")
-    
-    return grouped_osi, grouped_vis
+
+    return grouped_osi, grouped_vis, grouped_opi
 
 from datetime import datetime
 
@@ -170,6 +186,12 @@ from datetime import datetime
 def _format_time(iso_str: str, time_zone_name: str | None = None) -> str:
     """'2025-11-25T14:00:00' -> '2:00 pm EST'."""
     return format_time_with_tz(iso_str, time_zone_name)
+
+
+def _format_date(iso_str: str) -> str:
+    """'2025-11-25T14:00:00' -> '11/25/2025'."""
+    dt = datetime.fromisoformat(iso_str)
+    return f"{dt.month}/{dt.day}/{dt.year}"
 
 
 def build_vis_body(assignments: list[dict]) -> str:
@@ -216,6 +238,44 @@ def build_vis_body(assignments: list[dict]) -> str:
     return "".join(lines)
 
 
+def build_opi_body(assignments: list[dict]) -> str:
+    lines: list[str] = []
+
+    lines.append(
+        "Hello,\n\n"
+        "Reminding you of your scheduled telephonic (OPI) assignment(s) for tomorrow.\n"
+    )
+
+    assignments_sorted = sorted(assignments, key=lambda a: a["start_time"])
+
+    for idx, a in enumerate(assignments_sorted, start=1):
+        date_str = _format_date(a["start_time"])
+        time_str = _format_time(a["start_time"], a.get("time_zone_name"))
+
+        lines.append(f"\n{idx}) Assignment Number: {a.get('code')}")
+        lines.append(f"\nDate and Time: {date_str}, {time_str}\n")
+
+    lines.append(
+        "\nPlatform: Ad Astra Connect\n"
+        "\nHow to start the session: Log in Ad Astra Connect and Amazon Connect using "
+        "your OPI credentials, click on appointment, click on start the session once "
+        "the appointment opens.\n"
+        f"\nInstruction link, if needed: {OPI_INSTRUCTION_LINK}\n"
+        "\nReminder: Please leave the session if the client didn't join after 5-10 minutes "
+        "from the start time.\n"
+        "\nImportant note: OPI scheduled telephonic doesn't require VOS form submission. "
+        "The system will invoice the appointment.\n"
+        "\nHelpline: opi@ad-astrainc.com or call via 301 408 4242 Extension 145\n"
+    )
+
+    lines.append(
+        "\nLet us know if you experience any problems right away.\n\n"
+        "Thank you,\n"
+        "Ramazan"
+    )
+    return "".join(lines)
+
+
 def main():
     print(f"Processing {need_date} reminders...")
 
@@ -231,11 +291,13 @@ def main():
     with open(os.path.join(date_dir, "appointments.json"), "w", encoding="utf-8") as f:
         json.dump(appointments, f, indent=4, ensure_ascii=False)
 
-    grouped_osi, grouped_vis = group_appointments(adastra_client, appointments)
+    grouped_osi, grouped_vis, grouped_opi = group_appointments(adastra_client, appointments)
     with open(os.path.join(date_dir, "grouped_apps_osi.json"), "w", encoding="utf-8") as f:
         json.dump(grouped_osi, f, indent=4, ensure_ascii=False)
     with open(os.path.join(date_dir, "grouped_apps_vis.json"), "w", encoding="utf-8") as f:
         json.dump(grouped_vis, f, indent=4, ensure_ascii=False)
+    with open(os.path.join(date_dir, "grouped_apps_opi.json"), "w", encoding="utf-8") as f:
+        json.dump(grouped_opi, f, indent=4, ensure_ascii=False)
 
     print(f"sending OSI reminders...")
     textus_client = TextUsClient()
@@ -261,6 +323,13 @@ def main():
         subject = "Reminder"
         body = build_vis_body(assignments)
         client.send_message(to, subject, body)
+        print(f"Sent to {interpreter}")
+
+    print(f"sending OPI reminders...")
+    for interpreter, assignments in grouped_opi.items():
+        subject = "Reminder - Scheduled Telephonic (OPI) Assignment"
+        body = build_opi_body(assignments)
+        client.send_message(interpreter, subject, body)
         print(f"Sent to {interpreter}")
 
 if __name__ == '__main__':

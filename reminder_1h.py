@@ -79,6 +79,35 @@ def build_vis_body_1h(assignments: list[dict]) -> str:
     return "".join(lines)
 
 
+def build_opi_body_1h(assignments: list[dict]) -> str:
+    lines = [
+        "Hello,\n\n"
+        "This is a reminder that your scheduled telephonic (OPI) assignment(s) "
+        "start in about one hour.\n"
+    ]
+
+    for idx, a in enumerate(sorted(assignments, key=lambda x: x["start_time"]), start=1):
+        date_str = main._format_date(a["start_time"])
+        time_str = main._format_time(a["start_time"], a.get("time_zone_name"))
+        lines.append(f"\n{idx}) Assignment Number: {a.get('code')}")
+        lines.append(f"\nDate and Time: {date_str}, {time_str}\n")
+
+    lines.append(
+        "\nPlatform: Ad Astra Connect. Log in with your OPI credentials, click on the "
+        "appointment, then click on start the session.\n"
+        f"\nInstruction link, if needed: {main.OPI_INSTRUCTION_LINK}\n"
+        "\nReminder: Please leave the session if the client didn't join after 5-10 minutes "
+        "from the start time.\n"
+        "\nImportant note: OPI scheduled telephonic doesn't require VOS form submission. "
+        "The system will invoice the appointment.\n"
+        "\nHelpline: opi@ad-astrainc.com or call via 301 408 4242 Extension 145\n"
+        "\nLet us know if you experience any problems right away.\n\n"
+        "Thank you,\n"
+        "Ramazan"
+    )
+    return "".join(lines)
+
+
 def filter_appointments(appointments: list[dict], need_date: str, sent_1h: dict[str, str]) -> list[dict]:
     now = datetime.now(NY)
     filtered = []
@@ -139,7 +168,7 @@ def main_1h():
         print("Nothing to send.")
         return
 
-    grouped_osi, grouped_vis = main.group_appointments(adastra_client, appointments)
+    grouped_osi, grouped_vis, grouped_opi = main.group_appointments(adastra_client, appointments)
 
     textus_client = TextUsClient()
     print("sending OSI 1h reminders...")
@@ -163,6 +192,17 @@ def main_1h():
     graph_client = GraphClient()
     for interpreter, assignments in grouped_vis.items():
         graph_client.send_message(interpreter, "Reminder", build_vis_body_1h(assignments))
+        print(f"Sent to {interpreter}")
+        for a in assignments:
+            sent_1h[str(a["code"])] = need_date
+
+    print("sending OPI 1h reminders...")
+    for interpreter, assignments in grouped_opi.items():
+        graph_client.send_message(
+            interpreter,
+            "Reminder - Scheduled Telephonic (OPI) Assignment",
+            build_opi_body_1h(assignments),
+        )
         print(f"Sent to {interpreter}")
         for a in assignments:
             sent_1h[str(a["code"])] = need_date
