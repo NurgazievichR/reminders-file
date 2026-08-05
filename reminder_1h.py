@@ -3,6 +3,7 @@ import os
 
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+from decouple import config
 
 import main
 from adastra_client import AdAstraClient
@@ -168,7 +169,7 @@ def main_1h():
         print("Nothing to send.")
         return
 
-    grouped_osi, grouped_vis, grouped_opi = main.group_appointments(adastra_client, appointments)
+    grouped_osi, grouped_vis, grouped_opi, grouped_osi_asl, grouped_vis_asl = main.group_appointments(adastra_client, appointments)
 
     textus_client = TextUsClient()
     print("sending OSI 1h reminders...")
@@ -204,6 +205,40 @@ def main_1h():
             build_opi_body_1h(assignments),
         )
         print(f"Sent to {interpreter}")
+        for a in assignments:
+            sent_1h[str(a["code"])] = need_date
+
+    dhoh_textus_client = TextUsClient(account_slug=config("DHOH_ACCOUNT_SLUG"))
+
+    print("sending ASL OSI 1h reminders...")
+    for interpreter, assignments in grouped_osi_asl.items():
+        times = [a["start_time"] for a in assignments if a.get("start_time")]
+        tz_names = [a.get("time_zone_name") for a in assignments if a.get("start_time")]
+        phone = (assignments[0].get("phone") or "").strip()
+        if not phone or not times:
+            print(f"error sending, phone {phone}, time {times}")
+            continue
+
+        conversation_id = send_same_day_sms(dhoh_textus_client, phone, times, tz_names)
+        print(f"Sent to {phone}, times: {', '.join(times)}")
+        if conversation_id:
+            dhoh_textus_client.close_conversation(conversation_id)
+
+        for a in assignments:
+            sent_1h[str(a["code"])] = need_date
+
+    print("sending ASL VIS 1h reminders...")
+    for interpreter, assignments in grouped_vis_asl.items():
+        phone = (assignments[0].get("phone") or "").strip()
+        if not phone:
+            print(f"error sending, no phone for {interpreter}")
+            continue
+
+        conversation_id = dhoh_textus_client.send_video_reminder(phone, assignments, same_day=True)
+        print(f"Sent to {phone}")
+        if conversation_id:
+            dhoh_textus_client.close_conversation(conversation_id)
+
         for a in assignments:
             sent_1h[str(a["code"])] = need_date
 

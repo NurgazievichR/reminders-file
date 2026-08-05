@@ -5,6 +5,7 @@ import shutil
 from collections import defaultdict
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
+from decouple import config
 
 from adastra_client import AdAstraClient
 from textus_cleint import TextUsClient
@@ -25,6 +26,11 @@ OPI_COMM_TYPES = ("st",)
 #everything else (tpp, svi, ...) is treated as video -> email with link/PIN
 
 OPI_INSTRUCTION_LINK = "https://connectsupport.helpwise.help/articles/247501-how-to-join-a-prescheduled-opi-call2-how-to-see-and-download-call-logs"
+
+#ASL goes through the DHOH TextUs inbox instead of the regular IPI one, same
+#template as everyone else per comm type (onsite text unchanged, video gets
+#its own SMS template since it normally only exists as an email)
+LANGUAGE_ASL = "American Sign Language"
 
 #FULL READY
 def prepare_date_dir(root: str = DATA_DIR, days: int = 7):
@@ -114,28 +120,28 @@ def group_appointments(client: AdAstraClient, all_appointments):
     grouped_osi = defaultdict(list)
     grouped_vis = defaultdict(list)
     grouped_opi = defaultdict(list)
+    grouped_osi_asl = defaultdict(list)
+    grouped_vis_asl = defaultdict(list)
 
     for appointment in all_appointments:
         code = appointment.get("code")
         print(f"processing {code}",end=' ')
         language_to = appointment.get("languageTo")
+        is_asl = language_to == LANGUAGE_ASL
 
-        if language_to == "American Sign Language":
-            print('ASL')
-            continue
-        
         start_time = appointment.get("startTime")
         communication_type = appointment.get("fK_CommunicationType")
         comm_norm = (communication_type or "").strip().lower()
 
         if comm_norm in ONSITE_COMM_TYPES:
-            grouped_dict = grouped_osi
+            grouped_dict = grouped_osi_asl if is_asl else grouped_osi
         elif comm_norm in OPI_COMM_TYPES:
+            #no ASL through scheduled telephonic (it's a spoken-language-only channel)
             grouped_dict = grouped_opi
         else:
-            grouped_dict = grouped_vis
+            grouped_dict = grouped_vis_asl if is_asl else grouped_vis
 
-        is_virtual = grouped_dict is grouped_vis
+        is_virtual = grouped_dict in (grouped_vis, grouped_vis_asl)
 
         assigned_interpreter_id = appointment.get("fK_Interpreter")
         if not assigned_interpreter_id:
@@ -178,7 +184,7 @@ def group_appointments(client: AdAstraClient, all_appointments):
         grouped_dict[interpreter_email].append(appointment_data)
         print(f"success {interpreter_email}")
 
-    return grouped_osi, grouped_vis, grouped_opi
+    return grouped_osi, grouped_vis, grouped_opi, grouped_osi_asl, grouped_vis_asl
 
 from datetime import datetime
 
@@ -291,13 +297,17 @@ def main():
     with open(os.path.join(date_dir, "appointments.json"), "w", encoding="utf-8") as f:
         json.dump(appointments, f, indent=4, ensure_ascii=False)
 
-    grouped_osi, grouped_vis, grouped_opi = group_appointments(adastra_client, appointments)
+    grouped_osi, grouped_vis, grouped_opi, grouped_osi_asl, grouped_vis_asl = group_appointments(adastra_client, appointments)
     with open(os.path.join(date_dir, "grouped_apps_osi.json"), "w", encoding="utf-8") as f:
         json.dump(grouped_osi, f, indent=4, ensure_ascii=False)
     with open(os.path.join(date_dir, "grouped_apps_vis.json"), "w", encoding="utf-8") as f:
         json.dump(grouped_vis, f, indent=4, ensure_ascii=False)
     with open(os.path.join(date_dir, "grouped_apps_opi.json"), "w", encoding="utf-8") as f:
         json.dump(grouped_opi, f, indent=4, ensure_ascii=False)
+    with open(os.path.join(date_dir, "grouped_apps_osi_asl.json"), "w", encoding="utf-8") as f:
+        json.dump(grouped_osi_asl, f, indent=4, ensure_ascii=False)
+    with open(os.path.join(date_dir, "grouped_apps_vis_asl.json"), "w", encoding="utf-8") as f:
+        json.dump(grouped_vis_asl, f, indent=4, ensure_ascii=False)
 
     print(f"sending OSI reminders...")
     textus_client = TextUsClient()
@@ -314,7 +324,7 @@ def main():
         if conversation_id:
             textus_client.close_conversation(conversation_id)
 
-    print(f"sending VIS reminders...")  
+    print(f"sending VIS reminders...")
     client = GraphClient()
     for interpreter, assignments in grouped_vis.items():
         to = interpreter
@@ -331,6 +341,32 @@ def main():
         body = build_opi_body(assignments)
         client.send_message(interpreter, subject, body)
         print(f"Sent to {interpreter}")
+
+    print(f"sending ASL OSI reminders...")
+    dhoh_textus_client = TextUsClient(account_slug=config("DHOH_ACCOUNT_SLUG"))
+
+    for interpreter, assignments in grouped_osi_asl.items():
+        times = [a["start_time"] for a in assignments if a.get("start_time")]
+        tz_names = [a.get("time_zone_name") for a in assignments if a.get("start_time")]
+        phone = (assignments[0].get("phone") or "").strip()
+        if not phone or not times:
+            print(f'error sending, phone {phone}, time {times}')
+            continue
+        conversation_id = dhoh_textus_client.send_reminder(phone, times, time_zone_names=tz_names)
+        print(f"Sent to {phone}, times: {"".join(times)}")
+        if conversation_id:
+            dhoh_textus_client.close_conversation(conversation_id)
+
+    print(f"sending ASL VIS reminders...")
+    for interpreter, assignments in grouped_vis_asl.items():
+        phone = (assignments[0].get("phone") or "").strip()
+        if not phone:
+            print(f'error sending, no phone for {interpreter}')
+            continue
+        conversation_id = dhoh_textus_client.send_video_reminder(phone, assignments)
+        print(f"Sent to {phone}")
+        if conversation_id:
+            dhoh_textus_client.close_conversation(conversation_id)
 
 if __name__ == '__main__':
     main()

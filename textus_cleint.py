@@ -101,6 +101,66 @@ class TextUsClient:
             print(f"❌ send_reminder failed [{resp.status_code}]: {resp.text[:300]}")
         return None
     
+    @staticmethod
+    def _format_video_assignment(a: dict) -> str:
+        tz = a.get("time_zone_name")
+        time_str = format_time_with_tz(a["start_time"], tz)
+        link = a.get("virtualAddress")
+        meetingPinCode = a.get("meetingPinCode")
+        pin = a.get("pin")
+        noteInterpreter = a.get("noteInterpreter")
+
+        line = f"{time_str} - Link: {link} | Meeting#: {meetingPinCode} | PIN: {pin}"
+        if noteInterpreter and noteInterpreter != "n/a":
+            line += f" | Note: {noteInterpreter}"
+        return line
+
+    def send_video_reminder(
+        self,
+        phone_number: str,
+        assignments: list[dict],
+        *,
+        same_day: bool = False,
+    ) -> str | None:
+        to = self.to_e164_us(phone_number)
+        if not to:
+            print(f"❌ Invalid number format: {phone_number}")
+            return None
+
+        assignments_sorted = sorted(assignments, key=lambda a: a["start_time"])
+        assignment_lines = "\n".join(
+            f"{idx}) {self._format_video_assignment(a)}"
+            for idx, a in enumerate(assignments_sorted, start=1)
+        )
+
+        intro = (
+            "This is a reminder that your virtual assignment(s) start in about one hour:"
+            if same_day
+            else "This is a reminder of your virtual assignment(s) for tomorrow:"
+        )
+
+        body = (
+            f"{'Hello' if same_day else 'Good evening'},\n\n"
+            f"{intro}\n"
+            f"{assignment_lines}\n\n"
+            f"Please be camera presentable and join 5–10 minutes early.\n"
+            f"To acknowledge receipt, please reply with 1 or please reply with 2 if you need one of our project managers to place a call to you."
+            f"\nFriendly reminder to submit your VOS form immediately after completing the assignment. Payment processing begins once we receive your VOS—submitting it promptly helps ensure timely payment."
+        )
+
+        url = f"{self.host}/{self.account_slug}/messages"
+        payload = {"to": to, "body": body}
+
+        resp = requests.post(url, json=payload, headers=self.headers, timeout=30)
+        if resp.status_code == 201:
+            data = resp.json()
+            conversation_path = data.get("conversation")
+            if conversation_path:
+                return conversation_path.rsplit("/", 1)[-1]
+        else:
+            print(f"❌ send_video_reminder failed [{resp.status_code}]: {resp.text[:300]}")
+        return None
+
     def close_conversation(self, conversation_id: str) -> bool:
         url = f"{self.host}/conversations/{conversation_id}/close"
         resp = requests.put(url, headers=self.headers, timeout=30)
