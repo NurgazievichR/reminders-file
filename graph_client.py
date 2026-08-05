@@ -65,8 +65,9 @@ class GraphClient:
 
     # ------------------ SEND MAIL ------------------
 
-    def send_message(self, who: str, subject: str, body_text: str):
-        url = f"https://graph.microsoft.com/v1.0/users/{self.mailbox}/sendMail"
+    def send_message(self, who: str, subject: str, body_text: str, from_mailbox: str | None = None):
+        mailbox = from_mailbox or self.mailbox
+        url = f"https://graph.microsoft.com/v1.0/users/{mailbox}/sendMail"
 
         payload = {
             "message": {

@@ -203,6 +203,7 @@ def main_1h():
             interpreter,
             "Reminder - Scheduled Telephonic (OPI) Assignment",
             build_opi_body_1h(assignments),
+            from_mailbox=main.OPI_MAILBOX,
         )
         print(f"Sent to {interpreter}")
         for a in assignments:

@@ -26,6 +26,8 @@ OPI_COMM_TYPES = ("st",)
 #everything else (tpp, svi, ...) is treated as video -> email with link/PIN
 
 OPI_INSTRUCTION_LINK = "https://connectsupport.helpwise.help/articles/247501-how-to-join-a-prescheduled-opi-call2-how-to-see-and-download-call-logs"
+#OPI replies should land in the OPI team's own inbox, not the general one
+OPI_MAILBOX = "opi@ad-astrainc.com"
 
 #ASL goes through the DHOH TextUs inbox instead of the regular IPI one, same
 #template as everyone else per comm type (onsite text unchanged, video gets
@@ -339,7 +341,7 @@ def main():
     for interpreter, assignments in grouped_opi.items():
         subject = "Reminder - Scheduled Telephonic (OPI) Assignment"
         body = build_opi_body(assignments)
-        client.send_message(interpreter, subject, body)
+        client.send_message(interpreter, subject, body, from_mailbox=OPI_MAILBOX)
         print(f"Sent to {interpreter}")
 
     print(f"sending ASL OSI reminders...")
